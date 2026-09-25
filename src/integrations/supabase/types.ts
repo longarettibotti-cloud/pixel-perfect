@@ -14,7 +14,287 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      books: {
+        Row: {
+          author: string | null
+          color: string | null
+          created_at: string
+          current_page: number
+          id: string
+          status: string
+          title: string
+          total_pages: number
+          user_id: string
+        }
+        Insert: {
+          author?: string | null
+          color?: string | null
+          created_at?: string
+          current_page?: number
+          id?: string
+          status?: string
+          title: string
+          total_pages?: number
+          user_id?: string
+        }
+        Update: {
+          author?: string | null
+          color?: string | null
+          created_at?: string
+          current_page?: number
+          id?: string
+          status?: string
+          title?: string
+          total_pages?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      confessions: {
+        Row: {
+          day: string
+          id: string
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          day: string
+          id?: string
+          ts?: string
+          user_id?: string
+        }
+        Update: {
+          day?: string
+          id?: string
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_checkins: {
+        Row: {
+          bed: string | null
+          day: string
+          exame: boolean
+          oracao: boolean
+          sleep_quality: number | null
+          terco: boolean
+          updated_at: string
+          user_id: string
+          vitd: boolean
+          wake: string | null
+          water: number
+        }
+        Insert: {
+          bed?: string | null
+          day: string
+          exame?: boolean
+          oracao?: boolean
+          sleep_quality?: number | null
+          terco?: boolean
+          updated_at?: string
+          user_id?: string
+          vitd?: boolean
+          wake?: string | null
+          water?: number
+        }
+        Update: {
+          bed?: string | null
+          day?: string
+          exame?: boolean
+          oracao?: boolean
+          sleep_quality?: number | null
+          terco?: boolean
+          updated_at?: string
+          user_id?: string
+          vitd?: boolean
+          wake?: string | null
+          water?: number
+        }
+        Relationships: []
+      }
+      reading_sessions: {
+        Row: {
+          book_id: string | null
+          day: string
+          id: string
+          note: string | null
+          pages: number
+          secs: number
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          book_id?: string | null
+          day: string
+          id?: string
+          note?: string | null
+          pages?: number
+          secs?: number
+          ts?: string
+          user_id?: string
+        }
+        Update: {
+          book_id?: string | null
+          day?: string
+          id?: string
+          note?: string | null
+          pages?: number
+          secs?: number
+          ts?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_sessions_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settings: {
+        Row: {
+          bed_target: string
+          read_goal_min: number
+          user_id: string
+          wake_target: string
+          water_goal: number
+          weight_goal: number
+        }
+        Insert: {
+          bed_target?: string
+          read_goal_min?: number
+          user_id?: string
+          wake_target?: string
+          water_goal?: number
+          weight_goal?: number
+        }
+        Update: {
+          bed_target?: string
+          read_goal_min?: number
+          user_id?: string
+          wake_target?: string
+          water_goal?: number
+          weight_goal?: number
+        }
+        Relationships: []
+      }
+      stretch_sessions: {
+        Row: {
+          day: string
+          id: string
+          secs: number
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          day: string
+          id?: string
+          secs?: number
+          ts?: string
+          user_id?: string
+        }
+        Update: {
+          day?: string
+          id?: string
+          secs?: number
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          created_at: string
+          done: boolean
+          done_at: string | null
+          due: string | null
+          id: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          done?: boolean
+          done_at?: string | null
+          due?: string | null
+          id?: string
+          title: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          done?: boolean
+          done_at?: string | null
+          due?: string | null
+          id?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      weights: {
+        Row: {
+          day: string
+          id: string
+          kg: number
+          ts: string
+          user_id: string
+        }
+        Insert: {
+          day: string
+          id?: string
+          kg: number
+          ts?: string
+          user_id?: string
+        }
+        Update: {
+          day?: string
+          id?: string
+          kg?: number
+          ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workouts: {
+        Row: {
+          day: string
+          id: string
+          knee: number | null
+          note: string | null
+          rounds: number
+          secs: number
+          ts: string
+          user_id: string
+          workout: string
+        }
+        Insert: {
+          day: string
+          id?: string
+          knee?: number | null
+          note?: string | null
+          rounds?: number
+          secs?: number
+          ts?: string
+          user_id?: string
+          workout: string
+        }
+        Update: {
+          day?: string
+          id?: string
+          knee?: number | null
+          note?: string | null
+          rounds?: number
+          secs?: number
+          ts?: string
+          user_id?: string
+          workout?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
