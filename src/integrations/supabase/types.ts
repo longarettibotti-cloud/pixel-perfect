@@ -71,6 +71,30 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_exercises: {
+        Row: {
+          created_at: string
+          cue: string | null
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          cue?: string | null
+          id?: string
+          name: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          cue?: string | null
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_checkins: {
         Row: {
           bed: string | null
@@ -161,6 +185,7 @@ export type Database = {
           user_id: string
           wake_target: string
           water_goal: number
+          week_plan: Json | null
           weight_goal: number
         }
         Insert: {
@@ -169,6 +194,7 @@ export type Database = {
           user_id?: string
           wake_target?: string
           water_goal?: number
+          week_plan?: Json | null
           weight_goal?: number
         }
         Update: {
@@ -177,6 +203,7 @@ export type Database = {
           user_id?: string
           wake_target?: string
           water_goal?: number
+          week_plan?: Json | null
           weight_goal?: number
         }
         Relationships: []
@@ -255,6 +282,39 @@ export type Database = {
           id?: string
           kg?: number
           ts?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workout_plans: {
+        Row: {
+          created_at: string
+          id: string
+          items: Json
+          name: string
+          position: number
+          rest_secs: number
+          rounds: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items?: Json
+          name: string
+          position?: number
+          rest_secs?: number
+          rounds?: number
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items?: Json
+          name?: string
+          position?: number
+          rest_secs?: number
+          rounds?: number
           user_id?: string
         }
         Relationships: []
