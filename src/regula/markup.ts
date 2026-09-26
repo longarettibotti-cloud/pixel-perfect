@@ -144,10 +144,11 @@ export const MARKUP = `<div class="topbar"><div class="in">
     <div>
       <div class="eyebrow">Pós-LCA · full body · sem agachamento · ~20 min</div>
       <h1 style="font-size:clamp(32px,6vw,48px)">Treino</h1>
-      <p class="muted" style="margin:6px 0 0;max-width:62ch">Cinco rounds de 4 exercícios por repetição: empurrar, puxar, perna e core. Faça as reps, toque em "Feito" e siga. 60 s de descanso entre os rounds. No fim, o treino fica registrado.</p>
+      <p class="muted" style="margin:6px 0 0;max-width:62ch">Toque num dia da semana ou num treino. Faça as repetições, toque em "Feito" e siga: o descanso entre os rounds é contado sozinho. No fim, o treino fica registrado. Os treinos e a semana são editáveis.</p>
     </div>
     <div class="week" id="week" style="margin-top:16px"></div>
     <div class="tabs" role="tablist" id="tabs" style="margin-top:16px"></div>
+    <div class="row" style="margin-top:10px;gap:8px"><button type="button" class="btn" id="editPlanBtn" style="padding:6px 12px">Editar este treino</button><button type="button" class="btn" id="newPlanBtn" style="padding:6px 12px">Novo treino</button><button type="button" class="btn" id="editWeekBtn" style="padding:6px 12px">Editar semana</button></div>
     <div class="player" id="wPlayer" style="margin-top:16px">
       <div class="stage">
         <canvas class="anim" id="stageCanvas" aria-label="Animação do exercício atual"></canvas>
@@ -200,8 +201,9 @@ export const MARKUP = `<div class="topbar"><div class="in">
         <div class="avoid"><b>Joelho operado:</b> no posterior da coxa (de onde saiu o enxerto) e no quadríceps, fique na tensão leve. Se puxar ou doer na região da cirurgia, diminua ou pule.</div>
       </div>
     </section>
+    <div class="card" id="restCard" hidden style="margin-top:16px"><div class="eyebrow">Descanso</div><h2 style="font-size:24px">Dia livre</h2><p style="margin:0;max-width:62ch">Nenhum treino marcado para este dia. Se quiser se mexer, faça o alongamento guiado ou uma caminhada leve. Para mudar, use "Editar semana".</p></div>
     <div class="card" id="sunday" hidden style="margin-top:16px">
-      <div class="eyebrow">Domingo</div>
+      <div class="eyebrow">Caminhada leve</div>
       <h2 style="font-size:24px">Caminhada leve + mobilidade</h2>
       <p style="margin:0;max-width:62ch">20 minutos de caminhada em ritmo de conversa, depois 5 minutos de mobilidade: círculos de quadril e tornozelo, gato-vaca e rotação de tronco deitado.</p>
       <div><button class="btn primary" type="button" id="walkBtn">Registrar caminhada</button></div>

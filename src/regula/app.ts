@@ -16,6 +16,8 @@ export type RegulaContext = {
   onSignOut: () => void;
 };
 
+const SEED = { busy: false };
+
 export function mountRegula(root: HTMLElement, ctx: RegulaContext): () => void {
 root.innerHTML = MARKUP;
 const AC = new AbortController();
@@ -107,15 +109,14 @@ const EX = {
     frames:[{sh:[168,110],hip:[114,124],hN:[124,120],hF:[186,140],fN:[60,138]},{sh:[168,112],hip:[114,129],hN:[124,125],hF:[186,140],fN:[60,138]}],
     seq:[0,0,1,0], move:1.2, hold:.3}
 };
-// Every day is full body: push · pull · leg (no squat) · core
+const CATS={pushup:"Empurrar",pike:"Empurrar",row:"Puxar",superman:"Costas",birddog:"Core",shtap:"Core",bridge:"Perna",calf:"Perna",abd:"Perna",deadbug:"Core",plank:"Core",sideplank:"Core"};
+for(const k in CATS) if(EX[k]) EX[k].cat=CATS[k];
+// Treinos iniciais (criados no banco na primeira vez; depois são editáveis no app)
 const WORKOUTS = {
   A:{title:"Full body A", ex:["pushup","row","bridge","deadbug"], reps:[["10","reps"],["12","reps"],["12","reps"],["8","por lado"]]},
   B:{title:"Full body B", ex:["pike","superman","calf","birddog"], reps:[["8","reps"],["10","reps"],["15","reps"],["8","por lado"]]},
   C:{title:"Full body C", ex:["shtap","row","abd","plank"], reps:[["10","por lado"],["12","reps"],["12","por lado"],["30","segundos"]]}
 };
-const TAGS=["Empurrar","Puxar","Perna","Core"];
-// Monday..Sunday
-const ROT = ["A","B","C","A","B","C","D7"];
 const DAYN = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
 
 // ---------- Geometry ----------
@@ -226,7 +227,10 @@ function twoStep(btn,label,fn){
 
 // ================= Store (Supabase / Lovable Cloud) =================
 const sb=ctx.supabase, UID=ctx.userId;
-const S={books:{},logs:{},tasks:{},settings:{readGoalMin:20,bedTarget:"22:30",wakeTarget:"06:00",waterGoal:8,weightGoal:90}};
+const S={books:{},logs:{},tasks:{},plans:{},customEx:{},settings:{readGoalMin:20,bedTarget:"22:30",wakeTarget:"06:00",waterGoal:8,weightGoal:90,weekPlan:null}};
+let plansMissing=false;
+function builtinPlans(){ const o={}; ["A","B","C"].forEach((k,i)=>{ const w=WORKOUTS[k]; o[k]={id:k,name:w.title,rounds:5,rest:60,position:i,createdAt:0,items:w.ex.map((e,j)=>({ex:e,reps:w.reps[j][0],unit:w.reps[j][1]}))}; }); return o; }
+S.plans=builtinPlans(); plansMissing=true;
 let queue=Promise.resolve();
 function enqueue(fn){
   queue=queue.then(fn).then(r=>{ if(r&&r.error) throw r.error; }).catch(e=>{ console.error(e); setSync("err"); toast("Não consegui salvar. Confira a internet e tente de novo."); });
@@ -262,12 +266,18 @@ async function fetchAll(table){
   for(let from=0;;from+=1000){ const {data,error}=await sb.from(table).select("*").range(from,from+999); if(error) throw error; out.push(...data); if(data.length<1000) break; }
   return out;
 }
+async function fetchOpt(table){ try{ return await fetchAll(table); }catch(e){ console.warn("tabela ausente:",table,e); return null; } }
+function planFromRow(r){ return {id:r.id,name:r.name,rounds:r.rounds,rest:r.rest_secs,items:Array.isArray(r.items)?r.items:[],position:r.position||0,createdAt:Date.parse(r.created_at)}; }
+function planToRow(p){ return {id:p.id,user_id:UID,name:p.name,rounds:p.rounds,rest_secs:p.rest,items:p.items,position:p.position||0,created_at:iso(p.createdAt||Date.now())}; }
+function savePlan(p){ S.plans=Object.assign({},S.plans,{[p.id]:p}); enqueue(()=>sb.from("workout_plans").upsert(planToRow(p))); }
+function removePlan(id){ const o=Object.assign({},S.plans); delete o[id]; S.plans=o; enqueue(()=>sb.from("workout_plans").delete().eq("id",id)); }
+function saveCustomEx(c){ S.customEx=Object.assign({},S.customEx,{[c.id]:c}); enqueue(()=>sb.from("custom_exercises").upsert({id:c.id,user_id:UID,name:c.name,cue:c.cue||null,created_at:iso(c.createdAt||Date.now())})); }
 async function loadAll(){
   try{
     const kinds=Object.keys(KIND);
-    const res=await Promise.all([fetchAll("books"),fetchAll("tasks"),sb.from("settings").select("*").maybeSingle(),fetchAll("daily_checkins"),...kinds.map(k=>fetchAll(KIND[k]))]);
+    const res=await Promise.all([fetchAll("books"),fetchAll("tasks"),sb.from("settings").select("*").maybeSingle(),fetchAll("daily_checkins"),fetchOpt("workout_plans"),fetchOpt("custom_exercises"),...kinds.map(k=>fetchAll(KIND[k]))]);
     if(!alive) return;
-    const [books,tasks,settings,days]=res, lists=res.slice(4);
+    const [books,tasks,settings,days,plansRows,cexRows]=res, lists=res.slice(6);
     if(settings.error) throw settings.error;
     const logs={}; const put=(m,k,id,v)=>{ const L=logs[m]=logs[m]||{}; (L[k]=L[k]||{})[id]=v; };
     kinds.forEach((k,i)=>lists[i].forEach(r=>{ const rec=fromRow(k,r); put(rec.day.slice(0,7),k,rec.id,rec); }));
@@ -275,8 +285,18 @@ async function loadAll(){
     S.logs=overlayPending(logs);
     const bk={}; books.forEach(r=>{ bk[r.id]=bookFromRow(r); }); S.books=bk;
     const tk={}; tasks.forEach(r=>{ tk[r.id]=taskFromRow(r); }); S.tasks=tk;
-    if(settings.data){ const s=settings.data; S.settings={readGoalMin:s.read_goal_min,bedTarget:s.bed_target,wakeTarget:s.wake_target,waterGoal:s.water_goal,weightGoal:Number(s.weight_goal)}; }
-    setSync("ok"); renderAll();
+    if(settings.data){ const s=settings.data; S.settings={readGoalMin:s.read_goal_min,bedTarget:s.bed_target,wakeTarget:s.wake_target,waterGoal:s.water_goal,weightGoal:Number(s.weight_goal),weekPlan:Array.isArray(s.week_plan)?s.week_plan:null}; }
+    plansMissing=plansRows===null||cexRows===null;
+    if(!plansMissing){
+      const pl={}; plansRows.forEach(r=>{ pl[r.id]=planFromRow(r); }); const cx={}; cexRows.forEach(r=>{ cx[r.id]={id:r.id,name:r.name,cue:r.cue||"",createdAt:Date.parse(r.created_at)}; });
+      S.customEx=cx; S.plans=pl;
+      if(!plansRows.length&&!SEED.busy){ SEED.busy=true; const b=builtinPlans(), map={};
+        const np={}; ["A","B","C"].forEach(k=>{ const p=Object.assign({},b[k],{id:uid(),createdAt:Date.now()+b[k].position}); map[k]=p.id; np[p.id]=p; });
+        S.plans=np; enqueue(()=>sb.from("workout_plans").insert(Object.values(np).map(planToRow)));
+        if(!S.settings.weekPlan) saveSettings({weekPlan:PLAN_DEFAULT_WEEK.map(e=>map[e]||e)});
+      }
+    } else { S.plans=builtinPlans(); S.customEx={}; }
+    setSync("ok"); refreshPlans(); renderAll();
   }catch(e){ console.error(e); setSync("err"); toast("Não consegui carregar os dados. Confira a internet."); }
 }
 function addRecord(kind,rec){
@@ -295,7 +315,9 @@ function saveBook(b){ S.books=Object.assign({},S.books,{[b.id]:b}); renderAll();
 function removeBook(id){ const o=Object.assign({},S.books); delete o[id]; S.books=o; renderAll(); enqueue(()=>sb.from("books").delete().eq("id",id)); }
 function saveSettings(p){
   S.settings=Object.assign({},S.settings,p); renderAll(); const s=S.settings;
-  enqueue(()=>sb.from("settings").upsert({user_id:UID,read_goal_min:s.readGoalMin,bed_target:s.bedTarget,wake_target:s.wakeTarget,water_goal:s.waterGoal,weight_goal:s.weightGoal}));
+  const row={user_id:UID,read_goal_min:s.readGoalMin,bed_target:s.bedTarget,wake_target:s.wakeTarget,water_goal:s.waterGoal,weight_goal:s.weightGoal};
+  if(!plansMissing) row.week_plan=s.weekPlan||null;
+  enqueue(()=>sb.from("settings").upsert(row));
 }
 function all(kind){ const out=[]; for(const m in S.logs){ const c=S.logs[m]&&S.logs[m][kind]; if(c) for(const k in c) out.push(c[k]); } return out.sort((a,b)=>String(b.day||"").localeCompare(String(a.day||""))||b.ts-a.ts); }
 function readMinOn(day){ return Math.round(all("reading").filter(s=>s.day===day).reduce((a,s)=>a+(s.secs||0),0)/60); }
@@ -333,12 +355,12 @@ function renderHoje(){
   const h=now.getHours();
   $("helloTitle").textContent=(h<12?"Bom dia":h<18?"Boa tarde":"Boa noite")+(ctx.firstName?", "+ctx.firstName:"");
   $("todayLabel").textContent=WDL[now.getDay()]+", "+now.getDate()+" de "+MON[now.getMonth()];
-  const w=ROT[monIdx()], doneToday=all("workouts").filter(x=>x.day===today);
-  $("hTreinoName").textContent=w==="D7"?"Caminhada":WORKOUTS[w].title;
+  const w=weekEntry(monIdx()), doneToday=all("workouts").filter(x=>x.day===today), wp=S.plans[w];
+  $("hTreinoName").textContent=entryName(w);
   const st=$("hTreinoStatus");
   if(doneToday.length){ const x=doneToday[0]; st.className="status done"; st.textContent="Feito";
     $("hTreinoSub").textContent=fmtClock(x.secs)+(x.knee!=null?" · joelho "+x.knee+"/10":""); $("hTreinoBtn").textContent="Ver treino"; }
-  else { st.className="status"; st.textContent="Pendente"; $("hTreinoSub").textContent=w==="D7"?"20 min leve + mobilidade":WORKOUTS[w].ex.map(k=>EX[k].name).join(" · "); $("hTreinoBtn").textContent=w==="D7"?"Registrar caminhada":"Abrir treino"; }
+  else { st.className="status"; st.textContent="Pendente"; $("hTreinoSub").textContent=wp?wp.items.map(it=>exDef(it.ex).name).join(" · "):w==="walk"?"20 min leve + mobilidade":w==="stretch"?"Rotina guiada de ~10 min":"Dia livre. Descanse bem."; $("hTreinoBtn").textContent=w==="walk"?"Registrar caminhada":w==="stretch"?"Fazer alongamento":w==="rest"?"Ver semana":"Abrir treino"; }
   const goal=S.settings.readGoalMin||20, min=readMinOn(today);
   $("hReadMin").textContent=min; $("hReadGoal").textContent=goal;
   $("hReadBar").style.width=Math.min(100,min/goal*100)+"%";
@@ -362,52 +384,85 @@ function renderHoje(){
   row("Vitamina D",k=>[dayDoc(k).vitd?"w":""]);
   g.innerHTML=html;
 }
-$("hTreinoBtn").addEventListener("click",()=>{ go("treino"); const w=ROT[monIdx()]; select(w,monIdx()); if(w==="D7") openWalk(); });
+$("hTreinoBtn").addEventListener("click",()=>{ go("treino"); const w=weekEntry(monIdx()); select(w,monIdx()); if(w==="walk"&&!all("workouts").some(x=>x.day===dayKey())) openWalk(); });
 $("hReadBtn").addEventListener("click",()=>go("leitura"));
 
-// ================= TREINO =================
-let current="A", selDay=monIdx();
+// ================= TREINO (planos editáveis + semana configurável) =================
+// Semana: S.settings.weekPlan = 7 entradas (seg..dom): id de um plano | "stretch" | "walk" | "rest"
+const PLAN_DEFAULT_WEEK=["A","B","C","A","B","C","walk"];
+const SPECIAL={stretch:"Alongamento",walk:"Caminhada",rest:"Descanso"};
+function plansSorted(){ return Object.values(S.plans).sort((a,b)=>(a.position||0)-(b.position||0)||(a.createdAt||0)-(b.createdAt||0)); }
+function weekEntry(i){ const w=(S.settings.weekPlan&&S.settings.weekPlan.length===7)?S.settings.weekPlan:(plansMissing?PLAN_DEFAULT_WEEK:defaultWeek()); const e=w[i]; return (SPECIAL[e]||S.plans[e])?e:"rest"; }
+function defaultWeek(){ const p=plansSorted(); if(!p.length) return ["rest","rest","rest","rest","rest","rest","walk"]; const g=k=>p[k%p.length].id; return [g(0),g(1),g(2),g(0),g(1),g(2),"walk"]; }
+function shortName(e){ if(e==="walk") return "Cam"; if(e==="stretch") return "Along"; if(e==="rest") return "—"; const n=entryName(e).trim().split(/\s+/), last=n[n.length-1]; return last.length<=2?last.toUpperCase():n.map(w=>w[0]).join("").slice(0,3).toUpperCase(); }
+function entryName(e){ return SPECIAL[e]||(S.plans[e]?S.plans[e].name:"Descanso"); }
+function exDef(key){
+  if(key&&key.startsWith("c:")){ const c=S.customEx[key.slice(2)]; return {name:c?c.name:"Exercício removido",cue:c&&c.cue||"",tips:c&&c.cue?[c.cue]:[],avoid:"",custom:true,cat:"Personalizado"}; }
+  return EX[key]||{name:"Exercício removido",cue:"",tips:[],avoid:"",custom:true,cat:""};
+}
+function curPlan(){ return S.plans[curPlanId]||plansSorted()[0]||null; }
+function workoutLabel(w){ if(w==="Caminhada") return "Caminhada"; if(/^[ABC]$/.test(w)) return "Full body "+w; const p=S.plans[w]; return p?p.name:w; }
+function workoutTag(w){ const n=workoutLabel(w); if(n==="Caminhada") return "Cam"; const t=n.trim().split(/\s+/); const last=t[t.length-1]; return last.length<=2?last.toUpperCase():n.slice(0,2).toUpperCase(); }
+
+let sel="rest", curPlanId=null, selDay=monIdx();
 const cards=[]; const stage={cv:$("stageCanvas"),ctx:$("stageCanvas").getContext("2d")};
 function weekDate(i){ const d=new Date(); d.setDate(d.getDate()-monIdx()+i); return d; }
 function buildWeek(){
   const wk=$("week"); wk.innerHTML="";
-  ROT.forEach((w,i)=>{ const b=document.createElement("button"); b.type="button"; b.className="day"; b.dataset.i=i;
-    b.innerHTML=`<small>${DAYN[i]}</small><b>${w==="D7"?"Livre":w}</b>`; b.addEventListener("click",()=>select(w,i)); wk.appendChild(b); });
+  for(let i=0;i<7;i++){ const b=document.createElement("button"); b.type="button"; b.className="day"; b.dataset.i=i;
+    const en=entryName(weekEntry(i)); b.title=en; b.innerHTML=`<small>${DAYN[i]}</small><b class="dname">${esc(en)}</b><b class="dshort">${esc(shortName(weekEntry(i)))}</b>`; b.addEventListener("click",()=>select(weekEntry(i),i)); wk.appendChild(b); }
 }
 function markWeek(){
   const wdays=new Set(all("workouts").map(x=>x.day));
-  document.querySelectorAll(".day").forEach(d=>{ const i=+d.dataset.i;
+  document.querySelectorAll("#week .day").forEach(d=>{ const i=+d.dataset.i;
     d.classList.toggle("sel",i===selDay); d.classList.toggle("today",i===monIdx()); d.classList.toggle("done",wdays.has(dayKey(weekDate(i)))); });
 }
 function buildTabs(){
   const t=$("tabs"); t.innerHTML="";
-  for(const k of ["A","B","C","S"]){ const b=document.createElement("button"); b.type="button"; b.className="tab"; b.setAttribute("role","tab"); b.id="tab"+k; b.textContent=k==="S"?"Alongamento":WORKOUTS[k].title; b.addEventListener("click",()=>k==="S"?showStretch():select(k)); t.appendChild(b); }
+  const add=(key,label)=>{ const b=document.createElement("button"); b.type="button"; b.className="tab"; b.setAttribute("role","tab"); b.dataset.key=key; b.textContent=label;
+    b.addEventListener("click",()=>select(key)); t.appendChild(b); };
+  plansSorted().forEach(p=>add(p.id,p.name)); add("stretch","Alongamento");
+  markTabs();
 }
-function select(w,dayI){
-  selDay=dayI!==undefined?dayI:ROT.indexOf(w); markWeek(); showStretchSec(false);
-  $("sunday").hidden=w!=="D7";
-  if(w==="D7") return;
-  if(w!==current||!cards.length){ current=w; resetTimer(); buildGrid(); }
-  ["A","B","C","S"].forEach(k=>$("tab"+k).setAttribute("aria-selected",k===current?"true":"false"));
+function markTabs(){ const k=sel==="stretch"?"stretch":(S.plans[sel]?curPlanId:null); document.querySelectorAll("#tabs .tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.key===k))); }
+function select(e,dayI){
+  selDay=dayI!==undefined?dayI:-1;
+  if(!SPECIAL[e]&&!S.plans[e]) e="rest";
+  sel=e; markWeek();
+  const isPlan=!!S.plans[e];
+  $("wPlayer").hidden=!isPlan; $("grid").hidden=!isPlan; $("stretchSec").hidden=e!=="stretch";
+  $("sunday").hidden=e!=="walk"; $("restCard").hidden=e!=="rest";
+  $("editPlanBtn").hidden=!isPlan;
+  if(e==="stretch") stUI();
+  if(isPlan&&(e!==curPlanId||!cards.length)){ curPlanId=e; syncRoundsSel(); resetTimer(); buildGrid(); }
+  markTabs();
+}
+function syncRoundsSel(){
+  const p=curPlan(), s=$("roundsSel"); let h=""; for(let i=1;i<=10;i++) h+=`<option value="${i}">${i}${i===3?" (semana 1)":""}</option>`; s.innerHTML=h; s.value=String(p?p.rounds||5:5);
+}
+function drawPlaceholder(ctx,cv,label){
+  const dpr=window.devicePixelRatio||1, w=cv.clientWidth; if(!w) return; const W=Math.round(w*dpr), H=Math.round(w*170/260*dpr);
+  if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H); const s=W/260; ctx.setTransform(s,0,0,s,0,0);
+  ctx.fillStyle=C.muted||"#888"; ctx.textAlign="center"; ctx.font="600 13px system-ui,sans-serif"; ctx.fillText(label||"Sem animação",130,90);
 }
 function buildGrid(){
-  const g=$("grid"); g.innerHTML=""; cards.length=0;
-  WORKOUTS[current].ex.forEach((key,i)=>{
-    const ex=EX[key], rp=WORKOUTS[current].reps[i];
-    const el=document.createElement("article"); el.className="excard";
-    el.innerHTML=`<div class="eyebrow">${TAGS[i]}</div><h3>${ex.name}<span>${rp[0]} ${rp[1]}</span></h3><canvas class="anim" aria-label="Animação: ${ex.name}"></canvas>
-      <ul>${ex.tips.map(t=>`<li>${t}</li>`).join("")}</ul><div class="avoid"><b>Evite:</b> ${ex.avoid}</div>`;
+  const g=$("grid"); g.innerHTML=""; cards.length=0; const p=curPlan(); if(!p) return;
+  p.items.forEach((it,i)=>{
+    const ex=exDef(it.ex), el=document.createElement("article"); el.className="excard";
+    el.innerHTML=`<div class="eyebrow">${esc(ex.cat||"")}</div><h3>${esc(ex.name)}<span>${esc(it.reps)} ${esc(it.unit)}</span></h3><canvas class="anim" aria-label="Animação: ${esc(ex.name)}"></canvas>
+      ${ex.tips.length?`<ul>${ex.tips.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`:""}${ex.avoid?`<div class="avoid"><b>Evite:</b> ${esc(ex.avoid)}</div>`:""}`;
     g.appendChild(el); const cv=el.querySelector("canvas"); cards.push({el,cv,ctx:cv.getContext("2d"),ex,off:i*.37});
   });
   updateUI();
 }
 // round tracker
-const REST=60;
 let plan=[], idx=0, started=false, finished=false, t0=0, elapsedBefore=0, stepStart=0, audio=null, wake=null, lastWhole=null;
+function restSecs(){ const p=curPlan(); return p&&p.rest!=null?p.rest:60; }
 function makePlan(){
-  const R=+$("roundsSel").value; plan=[];
-  for(let r=0;r<R;r++){ for(let e=0;e<4;e++){ const rp=WORKOUTS[current].reps[e]; plan.push({type:"work",r,e,timed:rp[1]==="segundos"?+rp[0]:0}); }
-    if(r<R-1) plan.push({type:"rest",r,e:0,dur:REST}); }
+  const R=+$("roundsSel").value||1, p=curPlan(); plan=[]; if(!p||!p.items.length) return;
+  for(let r=0;r<R;r++){ p.items.forEach((it,e)=>plan.push({type:"work",r,e,timed:it.unit==="segundos"?(+it.reps||30):0}));
+    if(r<R-1&&restSecs()>0) plan.push({type:"rest",r,e:0,dur:restSecs()}); }
 }
 function resetTimer(){ started=false; finished=false; makePlan(); idx=0; elapsedBefore=0; $("startBtn").textContent="Iniciar"; releaseWake(); updateUI(); }
 function elapsed(){ return started&&!finished?elapsedBefore+(performance.now()-t0)/1000:elapsedBefore; }
@@ -424,9 +479,10 @@ function goTo(i){
   $("startBtn").textContent=s.type==="rest"?"Pular descanso":(s.timed?"Pular":"Feito"); updateUI();
 }
 function updateUI(){
-  const step=plan[idx]; if(!step) return;
-  const R=+$("roundsSel").value, W=WORKOUTS[current], ex=EX[W.ex[step.e]], rp=W.reps[step.e];
-  const ph=$("phase"), left=started&&!finished?stepLeft():null;
+  const p=curPlan(), step=plan[idx];
+  if(!p||!step){ $("phase").className="phase idle"; $("phase").textContent="Sem exercícios"; $("big").textContent="—"; $("unit").textContent="edite o treino"; return; }
+  const R=+$("roundsSel").value, n=p.items.length, it=p.items[step.e], ex=exDef(it.ex);
+  const ph=$("phase"), left=started&&!finished?stepLeft():null, REST=step.dur||restSecs();
   if(finished){ ph.className="phase"; ph.textContent="Concluído"; }
   else if(!started){ ph.className="phase idle"; ph.textContent="Pronto"; }
   else if(step.type==="work"){ ph.className="phase"; ph.textContent="Série"; }
@@ -434,11 +490,11 @@ function updateUI(){
   if(finished){ $("big").textContent=fmtClock(elapsedBefore); $("unit").textContent="tempo total"; }
   else if(step.type==="rest"){ $("big").textContent=Math.max(0,Math.ceil(left==null?REST:left)); $("unit").textContent="segundos de descanso"; }
   else if(step.timed&&left!=null){ $("big").textContent=Math.max(0,Math.ceil(left)); $("unit").textContent="segundos"; }
-  else { $("big").textContent=rp[0]; $("unit").textContent=rp[1]==="reps"?"repetições":rp[1]; }
+  else { $("big").textContent=it.reps; $("unit").textContent=it.unit==="reps"?"repetições":it.unit; }
   $("bar").className="bar"+(step.type==="rest"?" rest":"");
-  let pct= finished?100: step.type==="rest"?(1-(left==null?REST:left)/REST)*100 : (step.timed&&left!=null)?(1-left/step.timed)*100 : step.e/4*100;
+  let pct= finished?100: step.type==="rest"?(1-(left==null?REST:left)/REST)*100 : (step.timed&&left!=null)?(1-left/step.timed)*100 : step.e/n*100;
   $("barFill").style.width=Math.max(0,Math.min(100,pct)).toFixed(1)+"%";
-  $("roundTxt").textContent=(step.r+1)+"/"+R; $("exTxt").textContent=step.type==="rest"?"—":(step.e+1)+"/4";
+  $("roundTxt").textContent=(step.r+1)+"/"+R; $("exTxt").textContent=step.type==="rest"?"—":(step.e+1)+"/"+n;
   $("totalTxt").textContent=fmtClock(elapsed());
   $("nowName").textContent=finished?"Treino feito":(step.type==="rest"?"Próximo: ":"")+ex.name;
   $("nowCue").textContent=finished?"Registrado no histórico.":ex.cue;
@@ -447,6 +503,7 @@ function updateUI(){
   cards.forEach((c,i)=>c.el.classList.toggle("active",started&&!finished&&step.type==="work"&&i===step.e));
 }
 $("startBtn").addEventListener("click",()=>{
+  if(!plan.length){ toast("Adicione exercícios a este treino"); return; }
   if(!audio){ try{ audio=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
   if(audio&&audio.state==="suspended") audio.resume();
   if(finished) resetTimer();
@@ -459,14 +516,14 @@ $("roundsSel").addEventListener("change",resetTimer);
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&((started&&!finished)||rt.on||st.on)) requestWake(); },{signal:AC.signal});
 
 function openWorkoutSave(){
-  const secs=Math.round(elapsedBefore), rounds=+$("roundsSel").value;
+  const secs=Math.round(elapsedBefore), rounds=+$("roundsSel").value, p=curPlan();
   openModal(`<h2>Treino concluído</h2>
-    <p style="margin:0">${esc(WORKOUTS[current].title)} · ${rounds} rounds · <b class="num">${fmtClock(secs)}</b></p>
+    <p style="margin:0">${esc(p.name)} · ${rounds} rounds · <b class="num">${fmtClock(secs)}</b></p>
     <div><div class="muted" style="font-size:14px;margin-bottom:6px">Dor no joelho durante o treino (0 = nenhuma)</div>${scaleHTML("kneeScale",0)}</div>
     <label class="f" for="wNote">Observação (opcional)<textarea id="wNote" placeholder="Ex: ponte puxou um pouco no posterior"></textarea></label>
     <div class="row"><button class="btn primary" type="button" id="wSave">Salvar treino</button><button class="btn" type="button" id="wDiscard">Descartar</button></div>`,true);
   const knee=wireScale("kneeScale");
-  $("wSave").addEventListener("click",()=>{ addRecord("workouts",{id:uid(),day:dayKey(),ts:Date.now(),workout:current,rounds,secs,knee:knee(),note:$("wNote").value.trim()}); closeModal(); toast("Treino salvo"); });
+  $("wSave").addEventListener("click",()=>{ addRecord("workouts",{id:uid(),day:dayKey(),ts:Date.now(),workout:p.name,rounds,secs,knee:knee(),note:$("wNote").value.trim()}); closeModal(); toast("Treino salvo"); });
   twoStep($("wDiscard"),"Toque de novo para descartar",()=>{ closeModal(); toast("Treino descartado"); });
 }
 function openWalk(){
@@ -480,15 +537,94 @@ function openWalk(){
 }
 $("walkBtn").addEventListener("click",openWalk);
 function renderTreino(){
-  markWeek();
+  buildWeek(); markWeek();
   const list=all("workouts").slice(0,8), el=$("wHistory");
   if(!list.length){ el.innerHTML='<div class="empty">Nenhum treino registrado ainda. O primeiro entra aqui quando você terminar os rounds.</div>'; return; }
-  el.innerHTML=list.map(x=>`<div class="item"><span class="tag">${x.workout==="Caminhada"?"Cam":esc(x.workout)}</span>
-    <div class="grow"><div class="t1">${x.workout==="Caminhada"?"Caminhada":esc((WORKOUTS[x.workout]||{title:x.workout}).title)+" · "+x.rounds+" rounds"}</div>
+  el.innerHTML=list.map(x=>`<div class="item"><span class="tag">${esc(workoutTag(x.workout))}</span>
+    <div class="grow"><div class="t1">${esc(workoutLabel(x.workout))}${x.workout==="Caminhada"?"":" · "+x.rounds+" rounds"}</div>
     <div class="t2">${shortDate(x.ts)} · <span class="num">${fmtClock(x.secs)}</span>${x.knee!=null?" · joelho "+x.knee+"/10":""}${x.note?" · "+esc(x.note):""}</div></div>
     <button class="btn danger" type="button" data-del="${esc(x.id)}" style="padding:6px 10px">Excluir</button></div>`).join("");
   el.querySelectorAll("[data-del]").forEach(b=>{ const rec=list.find(x=>x.id===b.dataset.del); twoStep(b,"Confirmar",()=>removeRecord("workouts",rec)); });
 }
+// refresh the training UI after plans/week change
+function refreshPlans(){
+  buildTabs(); buildWeek();
+  if(sel!=="stretch"&&sel!=="walk"&&sel!=="rest"&&!S.plans[sel]){ const d=selDay>=0?selDay:monIdx(); select(weekEntry(d),d); return; }
+  if(S.plans[sel]){ if(!started){ syncRoundsSel(); resetTimer(); } buildGrid(); }
+  markTabs(); markWeek();
+}
+
+// ---------- Editors ----------
+function needTables(){ if(plansMissing){ toast("Falta criar as tabelas de treinos no Lovable (veja o prompt que o Claude te passou)."); return true; } return false; }
+function exOptions(selected){
+  const lib=Object.keys(EX).map(k=>`<option value="${k}"${k===selected?" selected":""}>${esc(EX[k].name)}</option>`).join("");
+  const cus=Object.values(S.customEx).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="c:${c.id}"${"c:"+c.id===selected?" selected":""}>${esc(c.name)}</option>`).join("");
+  return `<optgroup label="Com animação">${lib}</optgroup>${cus?`<optgroup label="Seus exercícios">${cus}</optgroup>`:""}`;
+}
+function openWeekEditor(){
+  if(needTables()) return;
+  const opts=e=>plansSorted().map(p=>`<option value="${p.id}"${p.id===e?" selected":""}>${esc(p.name)}</option>`).join("")+Object.keys(SPECIAL).map(k=>`<option value="${k}"${k===e?" selected":""}>${SPECIAL[k]}</option>`).join("");
+  const DL=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
+  openModal(`<h2>Minha semana</h2><p class="muted" style="margin:0">Escolha o que fazer em cada dia.</p>
+    ${DL.map((d,i)=>`<label class="f" for="wk${i}" style="flex-direction:row;align-items:center;gap:10px"><span style="width:80px;color:var(--ink);font-weight:600">${d}</span><select id="wk${i}">${opts(weekEntry(i))}</select></label>`).join("")}
+    <div class="row"><button class="btn primary" type="button" id="wkSave">Salvar semana</button><button class="btn" type="button" id="wkCancel">Cancelar</button></div>`);
+  $("wkSave").addEventListener("click",()=>{ const w=[]; for(let i=0;i<7;i++) w.push($("wk"+i).value); saveSettings({weekPlan:w}); closeModal(); refreshPlans(); select(weekEntry(monIdx()),monIdx()); toast("Semana salva"); });
+  $("wkCancel").addEventListener("click",closeModal);
+}
+function openPlanEditor(planId){
+  if(needTables()) return;
+  const src=planId&&S.plans[planId];
+  const draft=src?JSON.parse(JSON.stringify(src)):{id:uid(),name:"",rounds:4,rest:60,items:[{ex:"pushup",reps:"10",unit:"reps"}],position:plansSorted().length,createdAt:Date.now()};
+  openModal(`<h2>${src?"Editar treino":"Novo treino"}</h2>
+    <label class="f" for="pName">Nome<input id="pName" maxlength="40" value="${esc(draft.name)}" placeholder="Ex: Full body D, Core rápido"></label>
+    <div class="row"><label class="f" for="pRounds">Rounds<input id="pRounds" type="number" min="1" max="10" inputmode="numeric" value="${draft.rounds}"></label>
+    <label class="f" for="pRest">Descanso entre rounds (s)<input id="pRest" type="number" min="0" max="300" step="5" inputmode="numeric" value="${draft.rest}"></label></div>
+    <div class="muted" style="font-size:14px">Exercícios (na ordem do round)</div>
+    <div class="list" id="pItems"></div>
+    <div class="row"><button class="btn" type="button" id="pAdd">Adicionar exercício</button><button class="btn" type="button" id="pNewEx">Criar exercício novo</button></div>
+    <div id="pNewExForm" hidden class="card" style="background:var(--surface2)">
+      <label class="f" for="nxName">Nome do exercício<input id="nxName" maxlength="60" placeholder="Ex: Prancha com elevação de perna"></label>
+      <label class="f" for="nxCue">Como fazer (opcional)<textarea id="nxCue" placeholder="Uma ou duas frases sobre a execução correta"></textarea></label>
+      <div class="muted" style="font-size:13px">Exercícios novos ficam sem animação. Se quiser, peça ao Claude para desenhar.</div>
+      <div class="row"><button class="btn primary" type="button" id="nxSave">Criar e adicionar</button></div>
+    </div>
+    <div class="row"><button class="btn primary" type="button" id="pSave">Salvar treino</button>${src?'<button class="btn danger" type="button" id="pDel">Excluir treino</button>':""}<button class="btn" type="button" id="pCancel">Cancelar</button></div>`,true);
+  const renderItems=()=>{
+    $("pItems").innerHTML=draft.items.map((it,i)=>`<div class="item" style="flex-wrap:wrap;gap:8px" data-i="${i}">
+      <span class="num" style="width:18px;color:var(--muted)">${i+1}</span>
+      <select data-f="ex" style="flex:2;min-width:170px">${exOptions(it.ex)}</select>
+      <input data-f="reps" value="${esc(it.reps)}" inputmode="numeric" style="width:64px" aria-label="Quantidade">
+      <select data-f="unit" style="width:auto">${["reps","por lado","segundos"].map(u=>`<option${u===it.unit?" selected":""}>${u}</option>`).join("")}</select>
+      <span class="row" style="gap:4px"><button type="button" class="btn" data-a="up" style="padding:6px 10px" aria-label="Subir">↑</button><button type="button" class="btn" data-a="down" style="padding:6px 10px" aria-label="Descer">↓</button><button type="button" class="btn danger" data-a="rm" style="padding:6px 10px" aria-label="Remover">✕</button></span></div>`).join("")
+      ||'<div class="empty">Nenhum exercício ainda.</div>';
+  };
+  renderItems();
+  $("pItems").addEventListener("change",e=>{ const row=e.target.closest("[data-i]"); if(!row) return; draft.items[+row.dataset.i][e.target.dataset.f]=e.target.value; });
+  $("pItems").addEventListener("input",e=>{ const row=e.target.closest("[data-i]"); if(!row||e.target.dataset.f!=="reps") return; draft.items[+row.dataset.i].reps=e.target.value; });
+  $("pItems").addEventListener("click",e=>{ const b=e.target.closest("[data-a]"); if(!b) return; const i=+b.closest("[data-i]").dataset.i, a=b.dataset.a, L=draft.items;
+    if(a==="rm") L.splice(i,1); if(a==="up"&&i>0) [L[i-1],L[i]]=[L[i],L[i-1]]; if(a==="down"&&i<L.length-1) [L[i+1],L[i]]=[L[i],L[i+1]]; renderItems(); });
+  $("pAdd").addEventListener("click",()=>{ draft.items.push({ex:"plank",reps:"30",unit:"segundos"}); renderItems(); });
+  $("pNewEx").addEventListener("click",()=>{ $("pNewExForm").hidden=!$("pNewExForm").hidden; if(!$("pNewExForm").hidden) $("nxName").focus(); });
+  $("nxSave").addEventListener("click",()=>{ const name=$("nxName").value.trim(); if(!name){ toast("Dê um nome ao exercício"); return; }
+    const c={id:uid(),name:name.slice(0,60),cue:$("nxCue").value.trim().slice(0,400),createdAt:Date.now()}; saveCustomEx(c);
+    draft.items.push({ex:"c:"+c.id,reps:"10",unit:"reps"}); $("nxName").value=""; $("nxCue").value=""; $("pNewExForm").hidden=true; renderItems(); });
+  $("pSave").addEventListener("click",()=>{
+    const name=$("pName").value.trim(); if(!name){ toast("Dê um nome ao treino"); return; }
+    const items=draft.items.map(it=>({ex:it.ex,reps:String(it.reps||"").trim()||"10",unit:it.unit||"reps"}));
+    if(!items.length){ toast("Adicione pelo menos um exercício"); return; }
+    const p=Object.assign(draft,{name:name.slice(0,40),rounds:Math.min(10,Math.max(1,+$("pRounds").value||4)),rest:Math.min(300,Math.max(0,+$("pRest").value||0)),items});
+    savePlan(p); closeModal(); refreshPlans(); select(p.id); toast("Treino salvo");
+  });
+  if(src) twoStep($("pDel"),"Toque de novo para excluir",()=>{
+    removePlan(src.id);
+    const w=[]; for(let i=0;i<7;i++){ const e=weekEntry(i); w.push(e===src.id?"rest":e); } saveSettings({weekPlan:w});
+    closeModal(); refreshPlans(); toast("Treino excluído");
+  });
+  $("pCancel").addEventListener("click",closeModal);
+}
+$("editPlanBtn").addEventListener("click",()=>openPlanEditor(curPlanId));
+$("newPlanBtn").addEventListener("click",()=>openPlanEditor(null));
+$("editWeekBtn").addEventListener("click",openWeekEditor);
 
 // ================= LEITURA =================
 function renderLeitura(){
@@ -781,7 +917,7 @@ function buildStretchList(){
 const stCards=[];
 function collectStretchCanvases(){ stCards.length=0; document.querySelectorAll("#stList .st").forEach((r,i)=>{ const cv=r.querySelector("canvas"); stCards.push({cv,ctx:cv.getContext("2d"),a:STRETCH[i].a,off:i*.41}); }); }
 function showStretchSec(on){ $("wPlayer").hidden=on; $("grid").hidden=on; $("stretchSec").hidden=!on; if(on) $("sunday").hidden=true; }
-function showStretch(){ showStretchSec(true); ["A","B","C","S"].forEach(k=>$("tab"+k).setAttribute("aria-selected",k==="S"?"true":"false")); stUI(); }
+function showStretch(){ select("stretch"); }
 function stReset(){ Object.assign(st,{on:false,paused:false,k:0,done:false,lastWhole:null,phase:"idle"}); $("stStart").textContent="Iniciar"; stUI(); }
 function stGo(k){
   if(k>=ST_STEPS.length){ st.on=false; st.done=true; st.phase="done"; $("stStart").textContent="Recomeçar"; beep(880,.6); releaseWake();
@@ -920,12 +1056,13 @@ function tick(now){
   if(started&&!finished){ const left=stepLeft(); if(left!=null){ const w=Math.ceil(left); if(w!==lastWhole&&w<=3&&w>=1) beep(660,.12); lastWhole=w; if(left<=0) goTo(idx+1); } updateUI(); }
   stTick(); if(view==="treino"&&!$("stretchSec").hidden){ const t=now/1000, sc=$("stCanvas"); const cur=STRETCH[ST_STEPS[Math.min(st.k,ST_STEPS.length-1)].i];
     draw(sc.getContext("2d"),sc,cur.a,t); stCards.forEach(c=>draw(c.ctx,c.cv,c.a,t+c.off)); }
-  if(view==="treino"&&$("stretchSec").hidden){ const t=now/1000, step=plan[idx], k=WORKOUTS[current].ex[step?step.e:0];
-    draw(stage.ctx,stage.cv,EX[k],t); cards.forEach(c=>draw(c.ctx,c.cv,c.ex,t+c.off)); }
+  if(view==="treino"&&!$("wPlayer").hidden){ const t=now/1000, step=plan[idx], p=curPlan(), it=p&&p.items[step?step.e:0], ex=it?exDef(it.ex):null;
+    if(ex&&!ex.custom) draw(stage.ctx,stage.cv,ex,t); else drawPlaceholder(stage.ctx,stage.cv,ex?"Sem animação":"");
+    cards.forEach(c=>{ if(c.ex.custom) drawPlaceholder(c.ctx,c.cv,"Sem animação"); else draw(c.ctx,c.cv,c.ex,t+c.off); }); }
   rafId=requestAnimationFrame(tick);
 }
 buildWeek(); buildTabs(); buildStretchList();
-{ const w=ROT[monIdx()]; select(w==="D7"?"A":w, monIdx()); if(w==="D7") $("sunday").hidden=false; }
+{ select(weekEntry(monIdx()), monIdx()); }
 let startView="hoje";
 const hv=(location.hash||"").slice(1); if(VIEWS.includes(hv)) startView=hv;
 else { try{ const s=localStorage.getItem("rv_view"); if(VIEWS.includes(s)) startView=s; }catch(e){} }
