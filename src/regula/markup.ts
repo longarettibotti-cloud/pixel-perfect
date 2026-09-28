@@ -49,12 +49,19 @@ export const MARKUP = `<div class="topbar"><div class="in">
           </div>
         </div>
         <div class="ci health">
-          <div class="ci-h">Saúde <small id="waterMl">0 ml</small></div>
+          <div class="ci-h">Água <small id="waterMl">0 L</small></div>
+          <div class="bar water" id="waterBarWrap"><i id="waterBar"></i></div>
+          <div class="okline" id="waterInfo"></div>
+          <div class="row" style="gap:8px">
+            <button type="button" class="btn primary" id="waterBottle" style="padding:8px 14px">+ Garrafa</button>
+            <button type="button" class="btn" id="waterCup" style="padding:8px 12px">+ Copo 250 ml</button>
+            <button type="button" class="btn" id="waterUndo" style="padding:8px 12px">Desfazer</button>
+            <button type="button" class="btn" id="waterEdit" style="padding:8px 12px">Ajustar</button>
+          </div>
           <div class="row" style="justify-content:space-between">
-            <div class="counter"><button type="button" id="waterMinus" aria-label="Menos um copo">−</button><span class="num" id="waterN">0/8</span><button type="button" id="waterPlus" aria-label="Mais um copo">+</button></div>
+            <span class="muted" style="font-size:14px">Suplemento</span>
             <button type="button" class="chip h" data-k="vitd" aria-pressed="false">Vitamina D</button>
           </div>
-          <div class="cups" id="cups"></div>
           <div class="row" style="justify-content:space-between">
             <div class="okline" id="weightInfo">Peso: sem registro</div>
             <button type="button" class="btn" id="weighBtn" style="padding:6px 12px">Registrar peso</button>

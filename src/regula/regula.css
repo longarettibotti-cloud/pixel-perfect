@@ -57,6 +57,8 @@ textarea{min-height:70px;resize:vertical}
 .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
 .bar.read i{background:var(--read)}
 .bar.rest i{background:var(--rest)}
+.bar.water{height:12px}
+.bar.water i{background:var(--water)}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700}
 .empty{color:var(--muted);font-size:15px;padding:8px 0}
 

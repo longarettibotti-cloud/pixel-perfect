@@ -227,8 +227,13 @@ function twoStep(btn,label,fn){
 
 // ================= Store (Supabase / Lovable Cloud) =================
 const sb=ctx.supabase, UID=ctx.userId;
-const S={books:{},logs:{},tasks:{},plans:{},customEx:{},settings:{readGoalMin:20,bedTarget:"22:30",wakeTarget:"06:00",waterGoal:8,weightGoal:90,weekPlan:null}};
-let plansMissing=false;
+const S={books:{},logs:{},tasks:{},plans:{},customEx:{},settings:{readGoalMin:20,bedTarget:"22:30",wakeTarget:"06:00",waterGoal:2400,bottleMl:800,weightGoal:90,weekPlan:null}};
+let plansMissing=false, hasBottleCol=false;
+// Água em ml (valores antigos < 50 eram contados em copos de 250 ml)
+function waterMl(day){ const v=dayDoc(day).water||0; return v>0&&v<50?v*250:v; }
+function goalMl(){ const g=S.settings.waterGoal||2400; return g<50?g*250:g; }
+function bottleMl(){ return S.settings.bottleMl||800; }
+const fmtL=ml=>(ml/1000).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:2})+" L";
 function builtinPlans(){ const o={}; ["A","B","C"].forEach((k,i)=>{ const w=WORKOUTS[k]; o[k]={id:k,name:w.title,rounds:5,rest:60,position:i,createdAt:0,items:w.ex.map((e,j)=>({ex:e,reps:w.reps[j][0],unit:w.reps[j][1]}))}; }); return o; }
 S.plans=builtinPlans(); plansMissing=true;
 let queue=Promise.resolve();
@@ -285,7 +290,7 @@ async function loadAll(){
     S.logs=overlayPending(logs);
     const bk={}; books.forEach(r=>{ bk[r.id]=bookFromRow(r); }); S.books=bk;
     const tk={}; tasks.forEach(r=>{ tk[r.id]=taskFromRow(r); }); S.tasks=tk;
-    if(settings.data){ const s=settings.data; S.settings={readGoalMin:s.read_goal_min,bedTarget:s.bed_target,wakeTarget:s.wake_target,waterGoal:s.water_goal,weightGoal:Number(s.weight_goal),weekPlan:Array.isArray(s.week_plan)?s.week_plan:null}; }
+    if(settings.data){ const s=settings.data; S.settings={readGoalMin:s.read_goal_min,bedTarget:s.bed_target,wakeTarget:s.wake_target,waterGoal:s.water_goal,bottleMl:s.bottle_ml||800,weightGoal:Number(s.weight_goal),weekPlan:Array.isArray(s.week_plan)?s.week_plan:null}; hasBottleCol=("bottle_ml" in s); }
     plansMissing=plansRows===null||cexRows===null;
     if(!plansMissing){
       const pl={}; plansRows.forEach(r=>{ pl[r.id]=planFromRow(r); }); const cx={}; cexRows.forEach(r=>{ cx[r.id]={id:r.id,name:r.name,cue:r.cue||"",createdAt:Date.parse(r.created_at)}; });
@@ -315,7 +320,8 @@ function saveBook(b){ S.books=Object.assign({},S.books,{[b.id]:b}); renderAll();
 function removeBook(id){ const o=Object.assign({},S.books); delete o[id]; S.books=o; renderAll(); enqueue(()=>sb.from("books").delete().eq("id",id)); }
 function saveSettings(p){
   S.settings=Object.assign({},S.settings,p); renderAll(); const s=S.settings;
-  const row={user_id:UID,read_goal_min:s.readGoalMin,bed_target:s.bedTarget,wake_target:s.wakeTarget,water_goal:s.waterGoal,weight_goal:s.weightGoal};
+  const row={user_id:UID,read_goal_min:s.readGoalMin,bed_target:s.bedTarget,wake_target:s.wakeTarget,water_goal:goalMl(),weight_goal:s.weightGoal};
+  if(hasBottleCol) row.bottle_ml=bottleMl();
   if(!plansMissing) row.week_plan=s.weekPlan||null;
   enqueue(()=>sb.from("settings").upsert(row));
 }
@@ -380,7 +386,7 @@ function renderHoje(){
   row("Oração",k=>[dayDoc(k).oracao?"p":""]);
   row("Terço",k=>[dayDoc(k).terco?"p":""]);
   row("Exame",k=>[dayDoc(k).exame?"p":""]);
-  row("Água",k=>{ const w=dayDoc(k).water||0; return [w>=(S.settings.waterGoal||8)?"w":w>0?"w half":"",w+" copos"]; });
+  row("Água",k=>{ const w=waterMl(k); return [w>=goalMl()?"w":w>0?"w half":"",fmtL(w)]; });
   row("Vitamina D",k=>[dayDoc(k).vitd?"w":""]);
   g.innerHTML=html;
 }
@@ -827,9 +833,14 @@ function renderCheckin(){
   if(!lc){ ci.textContent="Confissão: sem registro"; ci.className="okline"; }
   else { const n=diffDays(today,lc.day); ci.textContent=n<=0?"Confessou hoje":"Última confissão há "+n+(n===1?" dia":" dias")+(n>15?" · já passou dos 15":""); ci.className="okline "+(n>15?"bad":"good"); }
   // water
-  const goal=S.settings.waterGoal||8, w=dd.water||0;
-  $("waterN").textContent=w+"/"+goal; $("waterMl").textContent=(w*250).toLocaleString("pt-BR")+" ml";
-  let cups=""; for(let i=0;i<Math.max(goal,w);i++) cups+=`<i class="${i<w?"f":""}"></i>`; $("cups").innerHTML=cups;
+  const goal=goalMl(), w=waterMl(day), bt=bottleMl();
+  $("waterMl").textContent=fmtL(w)+" de "+fmtL(goal);
+  $("waterBar").style.width=Math.min(100,w/goal*100)+"%";
+  const nb=Math.round(w/bt*10)/10, left=goal-w;
+  $("waterInfo").textContent=(w?"≈ "+nb.toLocaleString("pt-BR")+(nb===1?" garrafa":" garrafas")+" · ":"")+(left>0?"faltam "+left.toLocaleString("pt-BR")+" ml":"meta batida");
+  $("waterInfo").className="okline "+(left<=0?"good":"");
+  $("waterBottle").textContent="+ Garrafa "+bt.toLocaleString("pt-BR")+" ml";
+  $("waterUndo").disabled=!(waterUndo[day]&&waterUndo[day].length);
   // weight
   const lw=lastWeight(), wi=$("weightInfo"), wg=S.settings.weightGoal||90;
   if(!lw){ wi.textContent="Peso: nenhuma pesagem ainda"; wi.className="okline"; }
@@ -846,8 +857,18 @@ $("bedIn").addEventListener("change",e=>setDay(ciDayKey(),{sleep:{bed:e.target.v
 $("wakeIn").addEventListener("change",e=>setDay(ciDayKey(),{sleep:{wake:e.target.value}}));
 $("sleepQ").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) setDay(ciDayKey(),{sleep:{q:+b.dataset.v}}); });
 document.querySelectorAll("#checkin .chip").forEach(c=>c.addEventListener("click",()=>{ const k=c.dataset.k, day=ciDayKey(); setDay(day,{[k]:!dayDoc(day)[k]}); }));
-$("waterPlus").addEventListener("click",()=>{ const day=ciDayKey(); setDay(day,{water:(dayDoc(day).water||0)+1}); });
-$("waterMinus").addEventListener("click",()=>{ const day=ciDayKey(); setDay(day,{water:Math.max(0,(dayDoc(day).water||0)-1)}); });
+const waterUndo={};
+function addWater(ml){ const day=ciDayKey(), cur=waterMl(day); (waterUndo[day]=waterUndo[day]||[]).push(cur); setDay(day,{water:Math.max(0,Math.min(20000,cur+ml))}); }
+$("waterBottle").addEventListener("click",()=>addWater(bottleMl()));
+$("waterCup").addEventListener("click",()=>addWater(250));
+$("waterUndo").addEventListener("click",()=>{ const day=ciDayKey(), st=waterUndo[day]; if(!st||!st.length) return; setDay(day,{water:st.pop()}); });
+$("waterEdit").addEventListener("click",()=>{
+  const day=ciDayKey();
+  openModal(`<h2>Água do dia</h2><label class="f" for="wmIn">Total bebido (ml)<input id="wmIn" type="number" min="0" max="20000" step="50" inputmode="numeric" value="${waterMl(day)}"></label>
+    <div class="row"><button class="btn primary" type="button" id="wmSave">Salvar</button><button class="btn" type="button" id="wmCancel">Cancelar</button></div>`);
+  $("wmSave").addEventListener("click",()=>{ const v=Math.max(0,Math.min(20000,Math.round(+$("wmIn").value||0))); (waterUndo[day]=waterUndo[day]||[]).push(waterMl(day)); setDay(day,{water:v}); closeModal(); });
+  $("wmCancel").addEventListener("click",closeModal);
+});
 $("confBtn").addEventListener("click",()=>{
   const day=ciDayKey(); if(all("confession").some(x=>x.day===day)){ toast("Confissão já registrada neste dia"); return; }
   addRecord("confession",{id:uid(),day,ts:Date.now()}); toast("Confissão registrada. Deo gratias!");
@@ -871,13 +892,15 @@ function openGoals(){
   const s=S.settings;
   openModal(`<h2>Metas</h2>
     <div class="row"><label class="f" for="gBed">Deitar até<input type="time" id="gBed" value="${esc(s.bedTarget)}"></label><label class="f" for="gWake">Acordar às<input type="time" id="gWake" value="${esc(s.wakeTarget)}"></label></div>
-    <div class="row"><label class="f" for="gWater">Água (copos de 250 ml)<input type="number" id="gWater" min="1" max="20" inputmode="numeric" value="${s.waterGoal||8}"></label>
+    <div class="row"><label class="f" for="gWater">Meta de água (ml)<input type="number" id="gWater" min="250" max="10000" step="50" inputmode="numeric" value="${goalMl()}"></label>
+    <label class="f" for="gBottle">Sua garrafa (ml)<input type="number" id="gBottle" min="100" max="3000" step="50" inputmode="numeric" value="${bottleMl()}"></label></div>
+    <div class="row">
     <label class="f" for="gWeight">Peso meta (kg)<input id="gWeight" inputmode="decimal" value="${kgFmt(s.weightGoal||90)}"></label></div>
     <label class="f" for="gRead">Leitura por dia (min)<input type="number" id="gRead" min="1" inputmode="numeric" value="${s.readGoalMin||20}"></label>
     <div class="row"><button class="btn primary" type="button" id="gSave2">Salvar metas</button><button class="btn" type="button" id="gCancel2">Cancelar</button></div>`);
   $("gSave2").addEventListener("click",()=>{
     const wg=parseFloat(String($("gWeight").value).replace(",","."));
-    saveSettings({bedTarget:$("gBed").value||"22:30",wakeTarget:$("gWake").value||"06:00",waterGoal:Math.max(1,+$("gWater").value||8),weightGoal:wg>30?wg:90,readGoalMin:Math.max(1,+$("gRead").value||20)});
+    saveSettings({bedTarget:$("gBed").value||"22:30",wakeTarget:$("gWake").value||"06:00",waterGoal:Math.max(250,+$("gWater").value||2400),bottleMl:Math.max(100,+$("gBottle").value||800),weightGoal:wg>30?wg:90,readGoalMin:Math.max(1,+$("gRead").value||20)});
     closeModal(); toast("Metas salvas");
   });
   $("gCancel2").addEventListener("click",closeModal);
@@ -1040,9 +1063,9 @@ function renderSaude(){
   }
   // 30-day habits
   const days=[]; for(let i=29;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days.push(dayKey(d)); }
-  const goal=S.settings.waterGoal||8, rg=S.settings.readGoalMin||20, wdays=new Set(all("workouts").map(x=>x.day));
+  const goal=goalMl(), rg=S.settings.readGoalMin||20, wdays=new Set(all("workouts").map(x=>x.day));
   const rows=[["Oração da manhã",k=>dayDoc(k).oracao,"--spirit"],["Terço",k=>dayDoc(k).terco,"--spirit"],["Exame de consciência",k=>dayDoc(k).exame,"--spirit"],
-    ["Água na meta",k=>(dayDoc(k).water||0)>=goal,"--water"],["Vitamina D",k=>dayDoc(k).vitd,"--water"],["Treino",k=>wdays.has(k),"--accent"],["Leitura na meta",k=>readMinOn(k)>=rg,"--read"]];
+    ["Água na meta",k=>waterMl(k)>=goal,"--water"],["Vitamina D",k=>dayDoc(k).vitd,"--water"],["Treino",k=>wdays.has(k),"--accent"],["Leitura na meta",k=>readMinOn(k)>=rg,"--read"]];
   $("habitPct").innerHTML=rows.map(r=>{ const n=days.filter(r[1]).length; return `<div class="pct"><span>${r[0]}</span><span class="bar"><i style="width:${n/30*100}%;background:var(${r[2]})"></i></span><span class="num">${n}/30</span></div>`; }).join("");
   const cf=all("confession").slice(0,6);
   $("confHist").textContent=cf.length?"Confissões: "+cf.map(c=>c.day.slice(8)+"/"+c.day.slice(5,7)).join(", "):"Nenhuma confissão registrada ainda.";
