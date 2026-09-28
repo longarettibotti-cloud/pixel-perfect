@@ -181,6 +181,7 @@ export type Database = {
       settings: {
         Row: {
           bed_target: string
+          bottle_ml: number
           read_goal_min: number
           user_id: string
           wake_target: string
@@ -190,6 +191,7 @@ export type Database = {
         }
         Insert: {
           bed_target?: string
+          bottle_ml?: number
           read_goal_min?: number
           user_id?: string
           wake_target?: string
@@ -199,6 +201,7 @@ export type Database = {
         }
         Update: {
           bed_target?: string
+          bottle_ml?: number
           read_goal_min?: number
           user_id?: string
           wake_target?: string
