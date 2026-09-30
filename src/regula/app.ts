@@ -66,15 +66,18 @@ const EX = {
     prop:"mat", elbow:1, knee:-1,
     frames:[{sh:[165,132],hip:[115,132],hN:[212,134],fN:[52,136]},{sh:[165,124],hip:[115,133],hN:[210,112],fN:[56,120]}],
     seq:[0,1], move:1, hold:.8},
-  birddog:{name:"Bird-dog", cue:"Em quatro apoios, estenda braço e perna opostos na linha do corpo.",
-    tips:["Mãos sob os ombros, joelhos sob o quadril.","Estenda até a altura do tronco, sem subir além.","Imagine um copo d'água nas costas que não pode cair."],
-    avoid:"Girar o quadril para o lado ao estender a perna. Com o joelho operado apoiado, use uma almofada embaixo.",
-    prop:"mat", elbow:1, knee:-1,
-    frames:[
-      {sh:[160,92],hip:[110,96],hN:[160,140],hF:[160,140],fN:[78,139],fF:[78,139]},
-      {sh:[160,92],hip:[110,96],hN:[209,86],hF:[160,140],fN:[78,139],fF:[48,92]},
-      {sh:[160,92],hip:[110,96],hN:[160,140],hF:[209,86],fN:[48,92],fF:[78,139]}],
-    seq:[0,1,0,2], move:1.1, hold:.6},
+  wallhs:{name:"Parada de mão na parede", cue:"Com os pés na parede, suba caminhando com os pés e aproxime as mãos até ficar quase na vertical. Segure.",
+    tips:["Comece subindo só até uns 45°, com o corpo em V, e aumente com as semanas.","Braços estendidos: empurre o chão e leve os ombros em direção às orelhas.","Barriga e glúteos firmes para a lombar não arquear."],
+    avoid:"Descer de uma vez ou pular da parede: desça caminhando com os pés, devagar. Se sentir tontura ou pressão forte na cabeça, pare.",
+    prop:"wall", elbow:1, knee:1,
+    frames:[{sh:[70,92],hip:[117,113],hN:[70,140],fN:[176,138]},{sh:[160,92],hip:[166,40],hN:[158,140],fN:[178,-24]},{sh:[126,93],hip:[146,46],hN:[118,140],fN:[178,100]}],
+    seq:[0,2,1,2], move:1.4, hold:1.1},
+  copenhagen:{name:"Prancha de Copenhague (curta)", cue:"De lado, antebraço no chão e o joelho de cima apoiado num banco ou sofá. Eleve o quadril e aproxime a perna de baixo do banco.",
+    tips:["Versão curta: o apoio é no joelho, não no pé.","Cotovelo sob o ombro e corpo em linha reta.","Comece com 10 a 15 s de cada lado."],
+    avoid:"Qualquer dor na parte interna do joelho operado: pare na hora. Não faça a versão longa (apoio no pé) por enquanto.",
+    prop:"bench", guide:["sh","fN"], elbow:1, knee:-1,
+    frames:[{sh:[168,114],hip:[98,128],hN:[122,120],hF:[186,140],fN:[40,106],fF:[36,138]},{sh:[168,111],hip:[100,117],hN:[124,110],hF:[186,140],fN:[40,104],fF:[38,120]}],
+    seq:[0,1], move:1.2, hold:1.4},
   shtap:{name:"Prancha com toque no ombro", cue:"Prancha alta; toque o ombro oposto sem balançar o quadril.",
     tips:["Pés um pouco afastados dão mais estabilidade.","Toque devagar, alternando os lados.","Quadril parado: é aí que está o exercício."],
     avoid:"Balançar o quadril de um lado para o outro. Afaste mais os pés se precisar.",
@@ -109,12 +112,12 @@ const EX = {
     frames:[{sh:[168,110],hip:[114,124],hN:[124,120],hF:[186,140],fN:[60,138]},{sh:[168,112],hip:[114,129],hN:[124,125],hF:[186,140],fN:[60,138]}],
     seq:[0,0,1,0], move:1.2, hold:.3}
 };
-const CATS={pushup:"Empurrar",pike:"Empurrar",row:"Puxar",superman:"Costas",birddog:"Core",shtap:"Core",bridge:"Perna",calf:"Perna",abd:"Perna",deadbug:"Core",plank:"Core",sideplank:"Core"};
+const CATS={pushup:"Empurrar",pike:"Empurrar",row:"Puxar",superman:"Costas",copenhagen:"Core",wallhs:"Ombros",shtap:"Core",bridge:"Perna",calf:"Perna",abd:"Perna",deadbug:"Core",plank:"Core",sideplank:"Core"};
 for(const k in CATS) if(EX[k]) EX[k].cat=CATS[k];
 // Treinos iniciais (criados no banco na primeira vez; depois são editáveis no app)
 const WORKOUTS = {
   A:{title:"Full body A", ex:["pushup","row","bridge","deadbug"], reps:[["10","reps"],["12","reps"],["12","reps"],["8","por lado"]]},
-  B:{title:"Full body B", ex:["pike","superman","calf","birddog"], reps:[["8","reps"],["10","reps"],["15","reps"],["8","por lado"]]},
+  B:{title:"Full body B", ex:["pike","superman","calf","copenhagen"], reps:[["8","reps"],["10","reps"],["15","reps"],["15","segundos"]]},
   C:{title:"Full body C", ex:["shtap","row","abd","plank"], reps:[["10","por lado"],["12","reps"],["12","por lado"],["30","segundos"]]}
 };
 const DAYN = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
@@ -166,6 +169,7 @@ function draw(ctx,cv,ex,time){
   if(ex.prop==="mat"){ ctx.fillStyle=C.prop; ctx.fillRect(28,FLOOR,204,4); }
   if(ex.prop==="door"){ ctx.fillStyle=C.prop; ctx.fillRect(194,-8,10,FLOOR+8); ctx.fillStyle=C.muted; ctx.beginPath(); ctx.arc(191,56,3,0,7); ctx.fill(); }
   if(ex.prop==="wall"){ ctx.fillStyle=C.prop; ctx.fillRect(180,-8,10,FLOOR+8); }
+  if(ex.prop==="bench"){ ctx.fillStyle=C.prop; ctx.fillRect(22,110,62,7); ctx.fillRect(26,117,5,FLOOR-117); ctx.fillRect(75,117,5,FLOOR-117); }
   if(ex.prop==="jamb"){ ctx.fillStyle=C.prop; ctx.fillRect(112,-12,9,FLOOR+12); }
   ctx.strokeStyle=C.floor; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(8,FLOOR+.5); ctx.lineTo(252,FLOOR+.5); ctx.stroke();
   const p=poseAt(ex,time);
@@ -295,6 +299,13 @@ async function loadAll(){
     if(!plansMissing){
       const pl={}; plansRows.forEach(r=>{ pl[r.id]=planFromRow(r); }); const cx={}; cexRows.forEach(r=>{ cx[r.id]={id:r.id,name:r.name,cue:r.cue||"",createdAt:Date.parse(r.created_at)}; });
       S.customEx=cx; S.plans=pl;
+      // troca o bird-dog (removido) pela prancha de Copenhague e acrescenta a parada de mão ao treino C, uma única vez
+      const withBd=Object.values(pl).filter(x=>x.items.some(it=>it.ex==="birddog"));
+      if(withBd.length){
+        withBd.forEach(x=>savePlan(Object.assign({},x,{items:x.items.map(it=>it.ex==="birddog"?{ex:"copenhagen",reps:"15",unit:"segundos"}:it)})));
+        const c=Object.values(S.plans).find(x=>/full body c/i.test(x.name));
+        if(c&&!c.items.some(it=>it.ex==="wallhs")) savePlan(Object.assign({},c,{items:c.items.concat([{ex:"wallhs",reps:"20",unit:"segundos"}])}));
+      }
       if(!plansRows.length&&!SEED.busy){ SEED.busy=true; const b=builtinPlans(), map={};
         const np={}; ["A","B","C"].forEach(k=>{ const p=Object.assign({},b[k],{id:uid(),createdAt:Date.now()+b[k].position}); map[k]=p.id; np[p.id]=p; });
         S.plans=np; enqueue(()=>sb.from("workout_plans").insert(Object.values(np).map(planToRow)));
