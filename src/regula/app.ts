@@ -78,6 +78,18 @@ const EX = {
     prop:"bench", guide:["sh","fN"], elbow:1, knee:-1,
     frames:[{sh:[168,114],hip:[98,128],hN:[122,120],hF:[186,140],fN:[40,106],fF:[36,138]},{sh:[168,111],hip:[100,117],hN:[124,110],hF:[186,140],fN:[40,104],fF:[38,120]}],
     seq:[0,1], move:1.2, hold:1.4},
+  horse:{name:"Cavalo isométrico (versão alta)", cue:"Pés bem afastados e virados um pouco para fora. Desça pouco, como se fosse sentar num banco alto, e segure.",
+    tips:["Joelhos apontando na direção da ponta dos pés, nunca para dentro.","Desça só até onde não houver dor: comece bem alto e aprofunde com as semanas.","Tronco reto, peso nos calcanhares e respiração contínua."],
+    avoid:"Joelho caindo para dentro ou dor no joelho operado. Pare se doer, e nada de descer fundo por enquanto.",
+    prop:"mat", elbow:1, elbowF:-1, knee:1, kneeF:-1,
+    frames:[{sh:[130,24],hip:[130,76],hN:[122,62],hF:[138,62],fN:[96,138],fF:[164,138]},{sh:[130,36],hip:[130,88],hN:[124,68],hF:[136,68],fN:[92,138],fF:[168,138]}],
+    seq:[0,1], move:1.4, hold:2.2},
+  splithold:{name:"Passada isométrica (versão alta)", cue:"Um pé à frente e outro atrás, tronco reto. Desça um pouco dobrando os dois joelhos e segure. Troque de perna.",
+    tips:["Joelho da frente alinhado sobre o tornozelo, sem passar muito da ponta do pé.","Desça pouco: o joelho de trás fica bem longe do chão.","Faça dos dois lados, começando pela perna não operada."],
+    avoid:"Descer fundo ou apoiar o joelho de trás no chão. Pare se sentir dor no joelho operado.",
+    prop:"mat", elbow:1, knee:-1,
+    frames:[{sh:[122,24],hip:[122,76],hN:[127,74],fN:[148,138],fF:[94,138],toe:[159,140]},{sh:[121,37],hip:[120,89],hN:[126,86],fN:[150,138],fF:[92,138],toe:[161,140]}],
+    seq:[0,1], move:1.4, hold:2.2},
   shtap:{name:"Prancha com toque no ombro", cue:"Prancha alta; toque o ombro oposto sem balançar o quadril.",
     tips:["Pés um pouco afastados dão mais estabilidade.","Toque devagar, alternando os lados.","Quadril parado: é aí que está o exercício."],
     avoid:"Balançar o quadril de um lado para o outro. Afaste mais os pés se precisar.",
@@ -112,7 +124,7 @@ const EX = {
     frames:[{sh:[168,110],hip:[114,124],hN:[124,120],hF:[186,140],fN:[60,138]},{sh:[168,112],hip:[114,129],hN:[124,125],hF:[186,140],fN:[60,138]}],
     seq:[0,0,1,0], move:1.2, hold:.3}
 };
-const CATS={pushup:"Empurrar",pike:"Empurrar",row:"Puxar",superman:"Costas",copenhagen:"Core",wallhs:"Ombros",shtap:"Core",bridge:"Perna",calf:"Perna",abd:"Perna",deadbug:"Core",plank:"Core",sideplank:"Core"};
+const CATS={pushup:"Empurrar",pike:"Empurrar",row:"Puxar",superman:"Costas",copenhagen:"Core",wallhs:"Ombros",horse:"Perna",splithold:"Perna",shtap:"Core",bridge:"Perna",calf:"Perna",abd:"Perna",deadbug:"Core",plank:"Core",sideplank:"Core"};
 for(const k in CATS) if(EX[k]) EX[k].cat=CATS[k];
 // Treinos iniciais (criados no banco na primeira vez; depois são editáveis no app)
 const WORKOUTS = {
